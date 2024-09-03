@@ -40,4 +40,5 @@ pip install RPi.GPIO
 ## Documentacion de las Graficas
 
 https://www.youtube.com/watch?v=d_Ldw7z8kqc&t=31s
+
 https://parzibyte.me/blog/2021/01/03/chart-js-tutorial-ejemplos-graficas-web/
