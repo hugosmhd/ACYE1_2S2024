@@ -3,7 +3,8 @@ import pymongo
 
 # Configura la conexión a MongoDB
 def connect_to_mongo():
-    uri = "mongodb+srv://proyecto1:b4JraPNrOtH5oWlO@ejemplo.tnich.mongodb.net/?retryWrites=true&w=majority&appName=ejemplo"
+    # Colocar su linea de conexion
+    uri = ""
     client = pymongo.MongoClient(uri)
     db = client['sensor_data']
     collection = db['temperature_humidity']
