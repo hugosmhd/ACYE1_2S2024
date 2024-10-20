@@ -14,8 +14,6 @@ encabezado_columnas:
     .asciz "          A              B              C              D              E              F              G              H              I              J              K   \n"
     lenEncabezadoColumnas = .- encabezado_columnas
 
-
-    
 value:  .asciz "0000000000000"
     lenValue = .- value // SE ENCARGARA DE GUARDAR EL VALOR DE CADA CELDA (UNICAMENTE 13 espacios)
 
@@ -29,10 +27,16 @@ ingresoComando:
     .asciz ":"
     lenIngresoComando = .- ingresoComando   // Unicamente se colocan 2 pts para pedir el ingreso del comando
 
+msgIngresarValor:
+    .asciz "Ingresar un valor para @@@:"
+    lenMsgIngresarValor = .- msgIngresarValor
+
 fila:  .asciz "00"
 letra:  .asciz "A"
 buffer:  .asciz "0\n"
 prueba:  .asciz "9223372036854775807\0"
+// cualquier_numero:
+   // .asciz "159\0"
 .bss
 tablero:
     .skip 253 * 8   // Esta variable es nuestra matriz de 23 * 11 que tiene 64 bits cada numero
@@ -43,14 +47,25 @@ num:
 comando:
     .zero 50    // Encargado de guardar el comando que ingresa el usuario
 
+cualquier_numero:
+    .skip 20
+
+tipo_comando: .zero 1
+
 num64:
     .skip 8         // Reservar 8 bytes (64 bits) sin inicializar, variable que guarda un numero de 64 bits, uso general
 
 param1:
     .skip 8         // Reservar 8 bytes (64 bits) sin inicializar, variable que guarda un numero de 64 bits, uso general
 
+posicion_param1:
+    .skip 1
+
 param2:
     .skip 8         // Reservar 8 bytes (64 bits) sin inicializar, variable que guarda un numero de 64 bits, uso general
+
+posicion_param2:
+    .skip 2
 
 fila64:
     .skip 8         // Reservar 8 bytes (64 bits) sin inicializar, guarda fila que se este trabajando (puede ser de uso general)
@@ -64,6 +79,13 @@ fila64:
     MOV x8, 64
     SVC 0
 .endm
+
+/* .macro mPrint2
+    MOV x0, 1
+    MOV x2, 1
+    MOV x8, 64
+    SVC 0
+.endm  */
 
 .macro mImprimirValores
     MOV x9, 0                    // Índice inicial (contador)
@@ -123,7 +145,7 @@ imprimirCeldas:
     // En su momento fue util para verificar que los metodos iota y atoi funcionaran correctamente
     // Queda aqui por si les sirve!
     /*MOV x0, 0
-    MOV x1, #-100
+    MOV x1, #253
     ADRP x25, tablero
     ADD  x25, x25, :lo12:tablero       // Sumar el offset para la dirección completa
     store_loop:
@@ -259,6 +281,9 @@ atoi:  // ascii to int
         CBZ w1, a_convertir
         CMP w1, 32
         BEQ a_convertir
+        CMP w1, 10
+        BEQ a_convertir
+
         B a_contarDigitos
 
     a_convertir:
@@ -306,7 +331,7 @@ verificarParametro:
         BLT v_analizar_numero_resta        // Si w20 < 'A', salta a evaluar el numero
 
         CMP w20, #'K'             // Compara w20 con 'K' (75 en ASCII)
-        BGT v_fin        // Si w20 > 'K', salta fuera del rango (deberia de dar error)
+        BGT v_analizar_archivo_resta        // Si w20 > 'K', salta fuera del rango (deberia de dar error)
         STRB w20, [x10], 1 // Guardar la columna de la celda en num
     v_celda_fila:
         LDRB w20, [x0], #1  // Se carga el siguiente caracter del comando
@@ -319,10 +344,10 @@ verificarParametro:
         CBZ w20, v_retonar_celda // Si w20 = '\0', salta a retornar celda
 
         CMP w20, #'0'             // Compara w20 con '0' (65 en ASCII)
-        BLT v_fin        // Si w20 < '0', salta fuera del rango deberia de dar error
+        BLT v_analizar_archivo_resta        // Si w20 < '0', salta fuera del rango deberia de dar error
 
         CMP w20, #'9'             // Compara w20 con '9' (75 en ASCII)
-        BGT v_fin        // Si w20 > '9', s, salta fuera del rango deberia de dar error
+        BGT v_analizar_archivo_resta        // Si w20 > '9', s, salta fuera del rango deberia de dar error
         STRB w20, [x10], 1 // Guardar la fila de la celda en num
         B v_celda_fila  // Sigue leyendo los numeros de la fila
     v_analizar_numero_resta:
@@ -338,12 +363,34 @@ verificarParametro:
         BEQ v_retornar_numero           // Si es igual, salta a retornar_numero
         // VALIDACIONES QUE SEAN SOLO NUMEROS (Pendientes)
         STRB w20, [x10], 1
+        ADD x4, x4, 1   // Numero de caracteres leidos se aumenta
         B v_analizar_numero
+    v_analizar_archivo_resta:
+        // Se debe restar lo que se leyo antes para que pueda leer el numero completo en caso sea numero
+        SUB x0, x0, x4
+        MOV x4, 0 // Se reinicia las lecturas que se estan haciendo
+        LDR x10, =num
+    v_analizar_archivo:
+        LDRB w20, [x0], #1  // Se carga el siguiente caracter del comando
+        ADD x4, x4, 1   // Nuevamente se aumenta la cantidad de caracteres leidos
+
+        CMP w20, #' '             // Compara w20 con ' ' (65 en ASCII)
+        BEQ v_retonar_archivo        // Si w20 = ' ', salta a retornar celda
+        CMP w20, 10             // Compara w20 con '\10' (65 en ASCII)
+        BEQ v_retonar_archivo        // Si w20 = '\10', salta a retornar celda
+        CBZ w20, v_retonar_archivo // Si w20 = '\0', salta a retornar celda
+
+        STRB w20, [x10], 1 // Guardar la fila de la celda en num
+        ADD x4, x4, 1   // Numero de caracteres leidos se aumenta
+        B v_analizar_archivo  // Sigue leyendo los numeros de la fila
     v_retornar_numero:
         MOV w4, 1
         B v_fin
     v_retonar_celda:
         MOV w4, 2
+        B v_fin
+    v_retonar_archivo:
+        MOV w4, 4
         B v_fin
     v_fin:
 
@@ -355,6 +402,10 @@ verificarComando:
     LDRB w20, [x0], #1  // Se carga el primer caracter en w20
     CMP w20, #'G'          // Compara el carácter con 'G'
     BEQ guardar           // Si es igual, salta a guardar
+    CMP w20, #'L'          // Compara el carácter con 'L'
+    BEQ llenar           // Si es igual, salta a guardar
+    CMP w20, #'I'          // Compara el carácter con 'I'
+    BEQ importar           // Si es igual, salta a guardar
     B fin_verificar     // Si no encuentra ningun comando marcar error
     guardar:
         LDRB w20, [x0], #1  // Se sigue avanzando en el buffer (comando)
@@ -386,6 +437,94 @@ verificarComando:
         BNE fin_verificar           // Si es igual, salta a fin_verificar
 
         MOV w4, 1   // w4=1 (Comando Guardar encontrado)
+        B fin_verificar     // Si no encuentra ningun comando marcar error
+
+    llenar:
+        LDRB w20, [x0], #1  // Se sigue avanzando en el buffer (comando)
+        CMP w20, #'L'          // Compara el carácter con 'U'
+        BNE fin_verificar           // Si no es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1  // Se sigue avanzando en el buffer (comando)
+        CMP w20, #'E'          // Compara el carácter con 'U'
+        BNE fin_verificar           // Si no es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'N'          // Compara el carácter con 'A'
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'A'          // Compara el carácter con 'A'
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'R'          // Compara el carácter con 'R'
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+        
+        LDRB w20, [x0], #1
+        CMP w20, #' '          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'D'          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'E'          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'S'          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'D'          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'E'          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #' '          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        MOV w4, 11   // w4=11 (Comando Llenar encontrado)
+        B fin_verificar     // Si no encuentra ningun comando marcar error
+    importar:
+        LDRB w20, [x0], #1  // Se sigue avanzando en el buffer (comando)
+        CMP w20, #'M'          // Compara el carácter con 'U'
+        BNE fin_verificar           // Si no es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1  // Se sigue avanzando en el buffer (comando)
+        CMP w20, #'P'          // Compara el carácter con 'U'
+        BNE fin_verificar           // Si no es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'O'          // Compara el carácter con 'A'
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'R'          // Compara el carácter con 'A'
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'T'          // Compara el carácter con 'R'
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+        
+        LDRB w20, [x0], #1
+        CMP w20, #'A'          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #'R'          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        LDRB w20, [x0], #1
+        CMP w20, #' '          // Compara el carácter con ' '
+        BNE fin_verificar           // Si es igual, salta a fin_verificar
+
+        MOV w4, 15   // w4=15 (Comando Importar encontrado)
+        B fin_verificar     // Si no encuentra ningun comando marcar error
     fin_verificar:
     RET
 
@@ -394,6 +533,10 @@ verificarPalabraIntermedia:
     LDRB w20, [x0], #1      // Se carga el valor de memoria de x0 en w20
     CMP w20, #'E'          // Compara el carácter con 'E'
     BEQ en           // Si es igual, salta a en
+    CMP w20, #'H'          // Compara el carácter con 'H'
+    BEQ hasta           // Si es igual, salta a en
+    CMP w20, #'S'          // Compara el carácter con 'H'
+    BEQ separado_por           // Si es igual, salta a en
     B fin_verificar_intermedia
     en:
         LDRB w20, [x0], #1
@@ -405,12 +548,96 @@ verificarPalabraIntermedia:
         BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
 
         MOV w4, 1 // w4=1 palabra intermedia EN encontrada
+        B fin_verificar_intermedia
+    hasta:
+        LDRB w20, [x0], #1
+        CMP w20, #'A'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'S'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'T'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'A'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #' '          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        MOV w4, 2 // w4=2 palabra intermedia HASTA encontrada
+        B fin_verificar_intermedia
+    separado_por:
+        LDRB w20, [x0], #1
+        CMP w20, #'E'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'P'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'A'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'R'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'A'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'D'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'O'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #' '          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'P'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'O'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #'R'          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        LDRB w20, [x0], #1
+        CMP w20, #' '          // Compara el carácter con 'E'
+        BNE fin_verificar_intermedia           // Si es igual, salta a fin_verificar_intermedia
+
+        MOV w4, 3 // w4=3 palabra intermedia SEPARADO POR encontrada
+        B fin_verificar_intermedia
     fin_verificar_intermedia:
     RET
 
 getComando:
     mPrint ingresoComando, lenIngresoComando
     mRead 0, comando, 50
+    RET
+
+getNumero:
+    ADR x6, cualquier_numero
+    MOV x7, 0
+    STR x7, [x6]
+    mPrint msgIngresarValor, lenMsgIngresarValor
+    mRead 0, cualquier_numero, 20
+
     RET
 
 itoa:
@@ -469,28 +696,109 @@ parametroNumero:
     BEQ parametro_numero
     CMP w4, 02  // Si el parametro es una celda
     BEQ parametro_celda
+    CMP w4, 04  // Si el parametro es una celda
+    BEQ parametro_texto
     B retornar_parametro
     parametro_numero:
         // El numero de celda estara en w4
         ldr x12, =num
         ldr x5, =num
-        // ldr x8, =num64
         STP x29, x30, [SP, -16]!     // Guardar x29 y x30 antes de la llamada
         BL atoi
         LDP x29, x30, [SP], 16       // Restaurar x29 y x30 después de la llamada
         B retornar_parametro
     parametro_celda:
+        str x8, [sp, #-16]!  // Decrementa el puntero de la pila y guarda x8 en la pila
         STP x29, x30, [SP, -16]!     // Guardar x29 y x30 antes de la llamada
         BL posicionCelda
         LDP x29, x30, [SP], 16
+        ldr x8, [sp], #16   // Carga x8 desde la pila y luego incrementa el puntero de la pila
+        STR x5, [x9]
 
         ADRP x25, tablero
         ADD  x25, x25, :lo12:tablero       // Sumar el offset para la dirección completa
-        LDR  x2, [x25, x5]  // Se carga el valor que tenga nuestra matriz en dicha posicion, en el registro x0
-        // LDR x8, =num64
+        LDR  x2, [x25, x5, lsl 3]  // Se carga el valor que tenga nuestra matriz en dicha posicion, en el registro x0
         STR x2, [x8]
+        B retornar_parametro
+    parametro_texto:
+        ldr x12, =num
+        LDR x13, [x12]
+        STR x13, [x8]
+        B retornar_parametro
     retornar_parametro:
         RET
+
+
+posicionACelda:
+    MOV x22, 11
+    SDIV x21, x20, x22
+
+    // Multiplicar el cociente por el divisor
+    MUL x23, x21, x22       // x23 = x21 * x22
+
+    // Restar el producto del dividendo para obtener el residuo
+    SUB x24, x20, x23       // x24 = x20 - (x21 * x22) (residuo)
+    
+    // Columna
+    ADD w1, w24, 65
+    // MOV w1, w21
+    adr x5, msgIngresarValor
+    strb w1, [x5, #23]
+
+    // Fila
+    ADD x21, x21, 1
+    MOV x22, 10
+    SDIV x19, x21, x22
+
+    ADD w1, w19, 48
+    strb w1, [x5, #24]
+
+    // Multiplicar el cociente por el divisor
+    MUL x23, x19, x22       // x23 = x21 * x22
+
+    // Restar el producto del dividendo para obtener el residuo
+    SUB x24, x21, x23       // x24 = x20 - (x21 * x22) (residuo)
+    ADD w1, w24, 48
+    strb w1, [x5, #25]
+
+    RET
+
+llenarFilaColumna:
+    // x27: cuanto se va a sumar o restar para avanzar en la matriz
+    // x3: cantidad de veces que se repite el bucle
+    ADRP x25, tablero
+    ADD  x25, x25, :lo12:tablero       // Sumar el offset para la dirección completa
+
+    loop_llenar:
+        ADR x4, posicion_param1
+        LDR w20, [x4]
+        
+        STP x29, x30, [SP, -16]!     // Guardar x29 y x30 antes de la llamada
+        BL posicionACelda
+        LDP x29, x30, [SP], 16       // Restaurar x29 y x30 después de la llamada
+
+        STP x29, x30, [SP, -16]!     // Guardar x29 y x30 antes de la llamada
+        BL getNumero
+        LDP x29, x30, [SP], 16       // Restaurar x29 y x30 después de la llamada
+        LDR x12, =cualquier_numero 
+        LDR x5, =cualquier_numero 
+        LDR x8, =fila64
+        STP x29, x30, [SP, -16]!     // Guardar x29 y x30 antes de la llamada
+        BL atoi
+        LDP x29, x30, [SP], 16       // Restaurar x29 y x30 después de la llamada
+
+        // MOV x9, 122
+        STR  x7, [x25, x20, lsl 3]
+
+        ADR x4, posicion_param1
+        LDR w20, [x4]
+        ADD w20, w20, w27
+        STRB w20, [x4]
+
+        SUB x3, x3, 1
+        CMP x3, 0
+        BGE loop_llenar
+    RET
 _start:
     mPrint clear_screen, lenClear
 
@@ -504,10 +812,16 @@ _start:
         // El valor de x0 no se debe perder ya que tiene la direccion de memoria del comando
         // Si en el proceso de lectura del comando se usa x0, se debera de usar la pila para no perder el valor de x0
         BL verificarComando // Se verifica el comando (GUARDAR, SUMAR,ETC..)
+        ADR x5, tipo_comando
+        STRB w4, [x5]
+        // ldrb w0, [x5]
+
+
         BL limpiarParametro // Se limpia la variable num que es la encargada de tener los valores del parametro
         // Este es el primer parametro
         BL verificarParametro // Se verifica el tipo de parametro (Numero, Celda o Retorno) y guarda el valor del parametro para luego procesarlo
         LDR x8, =param1
+        LDR x9, =posicion_param1
         BL parametroNumero
 
         BL verificarPalabraIntermedia
@@ -515,20 +829,96 @@ _start:
         // Este es el segundo parametro
         BL verificarParametro
         LDR x8, =param2
+        LDR x9, =posicion_param2
         BL parametroNumero
+
+        ADR x0, tipo_comando
+        LDRB w2, [x0]
+
+        CMP w2, 1
+        BEQ concluir_guardar
+        CMP w2, 11
+        BEQ concluir_llenar
+        CMP w2, 15
+        BEQ concluir_importar
+        
+        B final
     concluir_guardar:
-        BL posicionCelda
         LDR x8, =param1
         LDR x9, [x8]
+
         LDR x11, =param2
         LDR x10, [x11]
 
         ADRP x25, tablero
         ADD  x25, x25, :lo12:tablero       // Sumar el offset para la dirección completa
         STR  x9, [x25, x5, lsl 3]
+        B fin_programa
+    concluir_llenar:
+        ADR x2, posicion_param1
+        LDRB w0, [x2]
+        ADR x3, posicion_param2
+        LDRB w1, [x3]
+        SUB x3, x1, x0
+        CMP x3, 0
+        BGT llenar_fila_positivo
+        CMP x3, 0
+        BLT llenar_fila_negativo
+        B fin_programa
+        llenar_fila_positivo:
+            CMP x3, 10
+            BGT llenar_columna_positivo
+
+            MOV w27, 1
+            BL llenarFilaColumna
+            B fin_programa
+        llenar_fila_negativo:
+            CMP x3, -10
+            BLT llenar_columna_negativo
+
+            NEG x3, x3
+            MOV w27, -1
+            BL llenarFilaColumna
+            B fin_programa
+        llenar_columna_positivo:
+            MOV x0, 11
+            SDIV x4, x3, x0
+            // Multiplicar el cociente por el divisor
+            MUL x5, x4, x0       // x5 = x4 * x0
+            // Restar el producto del dividendo para obtener el residuo
+            SUB x6, x3, x5       // x6 = x3 - (x4 * x0) (residuo)
+            MOV x3, x4
+            CMP x6, 0
+            BNE final
+
+            MOV w27, 11
+            BL llenarFilaColumna
+            B fin_programa
+        llenar_columna_negativo:
+            MOV x0, 11
+            SDIV x4, x3, x0
+            // Multiplicar el cociente por el divisor
+            MUL x5, x4, x0       // x5 = x4 * x0
+            // Restar el producto del dividendo para obtener el residuo
+            SUB x6, x3, x5       // x6 = x3 - (x4 * x0) (residuo)
+            MOV x3, x4
+            CMP x6, 0
+            BNE final
+
+            NEG x3, x3
+            MOV w27, -11
+            BL llenarFilaColumna
+            B fin_programa
+    concluir_importar:
+        mPrint param1, 5
+        B final
     fin_programa:
-        // BL imprimirCeldas
         B ingreso_comando
+        mov x0, 0
+        mov x8, 93
+        svc 0
+    final:
+        BL imprimirCeldas
         mov x0, 0
         mov x8, 93
         svc 0
